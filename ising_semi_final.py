@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from tqdm import tqdm
 
-
 # Constants and setup
 seeds=[87319301]
 n = 20  # Size of the lattice (n x n)

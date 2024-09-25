@@ -6,9 +6,9 @@ from tqdm import tqdm
 
 
 # Constants and setup
-seeds=[873193017]
-n = 20  # Size of the lattice (n x n)
-loops = 20000  # Number of flipping attempts
+seeds=[873193017, 3254326]
+n = 10  # Size of the lattice (n x n)
+loops = 1000  # Number of flipping attempts
 T = [1, 2, 3, 4, 5, 6, 8, 10] # effective temperature
 simulations = len(T)
 last=1000
@@ -141,7 +141,7 @@ mean_magnetisation_array = np.zeros(shape=(len(seeds), 2, simulations, loops))
 
 time_array = np.linspace(0, loops, loops)
 
-for seed in range(0, seeds):
+for seed in range(0, len(seeds)):
     np.random.seed(seeds[seed])
     for sim in range(0, simulations): # metropolis algorithm
         # Initialization
@@ -153,13 +153,13 @@ for seed in range(0, seeds):
         energy_array[seed][0][sim][0] = energy
         mean_magnetisation_array[seed][0][sim][0] = np.mean(spin_lattice)
 
-        for loop in tqdm(range(loops), desc=f"Seed {seed+1}/{len(seeds)}Processing Steps Metropolis {sim+1}/{simulations}"): # looping the flips
+        for loop in tqdm(range(loops), desc=f"Seed {seed+1}/{len(seeds)} Processing Steps Metropolis {sim+1}/{simulations}"): # looping the flips
             spin_lattice = metropolis(sim=sim, loop=loop, seed=seed)
 
         # getting averages of desired variables
         mean_energy_per_sim[seed][0][sim] = np.mean(energy_array[seed][0][sim])
         mean_energy_per_sim_last[seed][0][sim] = np.mean(energy_array[seed][0][sim][-last:])
-        mean_energy_per_sim_last_std[seed][0][sim] = np.sdom(energy_array[seed][0][sim][-last:])
+        mean_energy_per_sim_last_std[seed][0][sim] = np.std(energy_array[seed][0][sim][-last:])
         mean_abs_mean_magnetisation[seed][0][sim] = np.mean(np.abs(mean_magnetisation_array[seed][0][sim][-last:]))
         mean_abs_mean_magnetisation_std[seed][0][sim] = np.std(np.abs(mean_magnetisation_array[seed][0][sim][-last:]))
         heat_capacitance[seed][0][sim] = (mean_energy_per_sim[seed][0][sim])/T[sim]
@@ -178,7 +178,7 @@ for seed in range(0, seeds):
         energy_array[seed][1][sim][0] = energy
         mean_magnetisation_array[seed][1][sim][0] = np.mean(spin_lattice)
 
-        for loop in tqdm(range(loops), desc=f"Processing Steps Wolff {sim+1}/{simulations}"):
+        for loop in tqdm(range(loops), desc=f"Seed {seed+1}/{len(seeds)} Processing Steps Wolff {sim+1}/{simulations}"):
             spin_lattice = wolff_step(spin_lattice, T, sim, loop, seed)
 
         # getting averages of desired variables
@@ -195,7 +195,7 @@ for seed in range(0, seeds):
 # setting up data figures and plots
 fig_graph, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, figsize=(16, 10))
 fig_dots, (ax5, ax6, ax7) = plt.subplots(ncols=1, nrows=3, figsize=(16, 10))
-for seed in range(0, seeds):
+for seed in range(0, len(seeds)):
     for sim in range(simulations):
         ax1.plot(time_array, energy_array[seed][0][sim], linewidth=0.5)
         ax2.plot(time_array, mean_magnetisation_array[seed][0][sim], linewidth=0.5)
