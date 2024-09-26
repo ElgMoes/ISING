@@ -34,13 +34,18 @@ def flip_wolff_cluster(lattice, i, j, T, sim=1, loop=1):
     neighbours = [(-1, 0), (1, 0), (0, -1), (0, 1)]
     (n, m) = np.shape(lattice)
 
+    # Create a mask for visited lattice sites to avoid duplicates
+    visited = np.zeros_like(lattice, dtype=bool)
+    visited[i, j] = True  # Mark the first flipped site as visited
+
     # loops over stack to check for new possible cluster members
     while stack:
         (x, y) = stack.pop()
         for dx, dy in neighbours:
             nx, ny = (x + dx) % n, (y + dy) % m # creating new coordinates to be added to the cluster
-            if lattice[nx, ny] == initial_spin and np.random.random() < p_add: # checks if new coordinate has the same spin and is below the probability threshold
+            if not visited[nx, ny] and lattice[nx, ny] == initial_spin and np.random.random() < p_add: # checks if new coordinate has the same spin and is below the probability threshold
                 lattice[nx, ny] *= -1 # flips the newly added object
+                visited[nx, ny] = True # States that the location has been visited
                 stack.append((nx, ny)) # adds the new object to the cluster stack
 
     # calculating energy difference after cluster flip
