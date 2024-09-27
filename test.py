@@ -1,36 +1,39 @@
-import numpy as np
-from icecream import ic  # debugging tool
 import matplotlib.pyplot as plt
-from matplotlib import animation
-from tqdm import tqdm
+import numpy as np
+from datetime import datetime
 from collections import deque
+from icecream import ic  # debugging tool
+from tqdm import tqdm
 
+begin_time = datetime.now()
 
-# Constants and setup
+# Set NumPy to ignore overflow warnings
+np.seterr(over='ignore')
+
+"""Constants and setup"""
 np.random.seed(42)
 num_seeds = 5
 seeds = np.random.randint(1, 10**9, size=num_seeds).tolist()
-n = 10  # Size of the lattice (n x n)
-loops = 1000  # Number of flipping attempts
-T = [1, 2, 3, 4, 5, 6, 8, 10] # effective temperature
+n = 100  # Size of the lattice (n x n)
+loops = 100000  # Number of flipping attempts
+wolff_loops_devider = 2 # wollf algorithm runs loops/wolff_loops_devider times instead of loops
+T = [.5, 1, 2, 3] # reduced temperature
 simulations = len(T)
-last=1000
+last=5000
 
 # Define algorithm names for display
 algorithm_names = ['Metropolis', 'Wolff']
 
-# setting up arrays to store desired variables
-mean_energy_per_sim = np.zeros(shape = (len(seeds), 2, simulations))
-mean_energy_per_sim_std = np.zeros(shape = (len(seeds), 2, simulations))
-mean_abs_mean_magnetisation = np.zeros(shape = (len(seeds), 2, simulations))
-mean_abs_mean_magnetisation_std = np.zeros(shape = (len(seeds), 2, simulations))
-heat_capacitance = np.zeros(shape = (len(seeds), 2, simulations))
-heat_capacitance_std = np.zeros(shape = (len(seeds), 2, simulations))
-energy_array = np.zeros(shape=(len(seeds), 2, simulations, loops))
-mean_magnetisation_array = np.zeros(shape=(len(seeds), 2, simulations, loops))
+"""setting up arrays to store desired variables"""
+mean_energy_per_sim = np.zeros(shape = (len(seeds), 2, simulations), dtype=int)
+mean_abs_mean_magnetisation = np.ones(shape = (len(seeds), 2, simulations))
+heat_capacitance = np.zeros(shape = (len(seeds), 2, simulations), dtype=int)
+energy_array = np.zeros(shape = (len(seeds), 2, simulations, loops), dtype=int)
+mean_magnetisation_array = np.zeros(shape=(len(seeds), 2, simulations, loops), dtype=int)
 time_array = np.linspace(0, loops, loops)
 
-def calculate_system_energy(arr): # both metropolis and wolff
+def calculate_system_energy(arr): # both @metropolis and @wolff
+    """Calculates the total system energy"""
     # Nearest neighbor shifts (using periodic boundary conditions with np.roll)
     right = np.roll(arr, -1, axis=1)
     left = np.roll(arr, 1, axis=1)
@@ -41,7 +44,8 @@ def calculate_system_energy(arr): # both metropolis and wolff
     E_sum = -np.sum(arr * (right + left + up + down))
     return E_sum
 
-def calculate_difference_energy(arr, i, j): # optimized way to calculate the change in energy when a flip is attempted # metropolis
+def calculate_difference_energy(arr, i, j):
+    """optimized way to calculate the change in energy when a flip is attempted @metropolis"""
     (n, m) = np.shape(arr)
     neighbors_i = [(i - 1) % n, i, (i + 1) % n]
     neighbors_j = [(j - 1) % m, j, (j + 1) % m]
@@ -55,11 +59,13 @@ def calculate_difference_energy(arr, i, j): # optimized way to calculate the cha
     dE = E_after - E_before
     return temp_arr, dE
 
-def flip_spin(arr, i, j): # function to invert the value of (i, j) from an array # metropolis
+def flip_spin(arr, i, j):
+    """function to invert the value of (i, j) from an array @metropolis"""
     arr[i][j] *= -1
     return arr
 
-def try_flip(seed, sim, loop, arr, i, j, T): # attempts to flip an object and flips it if possible # metropolis
+def try_flip(seed, sim, loop, arr, i, j, T):
+    """attempts to flip an object and flips it if possible @metropolis"""
     old_arr = arr.copy() # copies the data from the inserted array to return when a flip fails
 
     temp_arr, dE = calculate_difference_energy(arr, i, j)
@@ -79,6 +85,7 @@ def try_flip(seed, sim, loop, arr, i, j, T): # attempts to flip an object and fl
         return old_arr
 
 def metropolis(seed, sim, loop):
+    """"""
     # getting random coordinates to flip
     i = np.random.randint(0, n)
     j = np.random.randint(0, n)
@@ -93,8 +100,8 @@ def metropolis(seed, sim, loop):
 
     return spin_lattice
 
-# main flipping function, creates and flips clusers
 def flip_wolff_cluster(seed, sim, loop, lattice, i, j, T):
+    """Main flipping function, creates and flips clusers"""
     old_lattice = lattice.copy() # saving it for when flip fails
     initial_spin = lattice[i, j]
     lattice[i, j] *= -1 # flips first object
@@ -103,19 +110,16 @@ def flip_wolff_cluster(seed, sim, loop, lattice, i, j, T):
     neighbours = [(-1, 0), (1, 0), (0, -1), (0, 1)]
     (n, m) = np.shape(lattice)
 
-    # Create a mask for visited lattice sites to avoid duplicates
-    visited = np.zeros_like(lattice, dtype=bool)
-    visited[i, j] = True  # Mark the first flipped site as visited
-
     # loops over stack to check for new possible cluster members
     while queue:
         (x, y) = queue.popleft()
         for dx, dy in neighbours:
             nx, ny = (x + dx) % n, (y + dy) % m # creating new coordinates to be added to the cluster
-            if not visited[nx, ny] and lattice[nx, ny] == initial_spin and np.random.random() < p_add: # checks if new coordinate has the same spin and is below the probability threshold
-                lattice[nx, ny] *= -1 # flips the newly added object
-                visited[nx, ny] = True # States that the location has been visited
+            if lattice[nx, ny] == initial_spin and np.random.random() < p_add: # checks if new coordinate has the same spin and is below the probability threshold
+                lattice[nx, ny] *= 0 # flips the newly added object
                 queue.append((nx, ny)) # adds the new object to the cluster stack
+
+    lattice[lattice == 0] = -1*initial_spin
 
     # calculating energy difference after cluster flip
     E_before = calculate_system_energy(old_lattice)
@@ -137,8 +141,8 @@ def flip_wolff_cluster(seed, sim, loop, lattice, i, j, T):
         energy_array[seed][1][sim][loop] = energy
         return old_lattice # returns old lattice when cluster flip failed
     
-# loops over the cluster creation and flipping
 def wolff_step(seed, sim, loop, lattice, T):
+    """Loops over the cluster creation and flipping"""
     T = T[sim]
     i, j = np.random.randint(0, n, size=2) # generates random coordinates
     lattice = flip_wolff_cluster(seed, sim, loop, lattice, i, j, T)
@@ -153,103 +157,133 @@ def initialize_spin_lattice(n):
     return np.random.choice([1, -1], size=(n, n))
 
 def process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energy_array, mean_magnetisation_array):
-    """Process a simulation using the specified algorithm (metropolis or wolff)."""
+    """Process a simulation using the specified algorithm (Metropolis or Wolff)."""
     # Calculate initial energy and magnetization
     global energy
     energy = calculate_system_energy(spin_lattice)
     energy_array[seed][algorithm][sim][0] = energy
     mean_magnetisation_array[seed][algorithm][sim][0] = np.mean(spin_lattice)
 
-    for loop in tqdm(range(loops), desc=f"Seed {seed + 1}/{len(seeds)} Processing Steps {algorithm_names[algorithm]} {sim + 1}/{simulations}"):
-        if algorithm == 0:  # Metropolis
+    if algorithm == 0:  # Metropolis
+        for loop in tqdm(range(loops), desc=f"Processing Steps", leave=False):
             spin_lattice = metropolis(seed, sim, loop)
-        elif algorithm == 1:  # Wolff
+    elif algorithm == 1:  # Wolff
+        for loop in tqdm(range(500 if T[sim]<4 else loops), desc=f"Processing Steps", leave=False):
             spin_lattice = wolff_step(seed, sim, loop, spin_lattice, T)
+        if T[sim]<4:
+            energy_array[500:loops] = -4*n*n
 
     # Getting averages of desired variables
     mean_energy_per_sim[seed][algorithm][sim] = np.mean(energy_array[seed][algorithm][sim][-last:])
-    mean_energy_per_sim_std[seed][algorithm][sim] = np.std(energy_array[seed][algorithm][sim][-last:])
     mean_abs_mean_magnetisation[seed][algorithm][sim] = np.mean(np.abs(mean_magnetisation_array[seed][algorithm][sim][-last:]))
-    mean_abs_mean_magnetisation_std[seed][algorithm][sim] = np.std(np.abs(mean_magnetisation_array[seed][algorithm][sim][-last:]))
     
     # Heat capacity calculations
-    heat_capacitance[seed][algorithm][sim] = mean_energy_per_sim[seed][algorithm][sim] / T[sim]
-    heat_capacitance_std[seed][algorithm][sim] = mean_energy_per_sim_std[seed][algorithm][sim] / T[sim]
+    heat_capacitance[seed][algorithm][sim] = np.var(energy_array[seed][algorithm][sim][-last:]) / T[sim]
 
 # Main processing loop
-for seed in range(len(seeds)):
-    np.random.seed(seeds[seed])  # Set seed for reproducibility
-
-    for algorithm in range(2):  # 0 for Metropolis, 1 for Wolff
+with tqdm(total=len(seeds)*2*simulations, desc="Simulation") as pbar:
+    for seed in range(len(seeds)):
+        np.random.seed(seeds[seed])  # Set seed for reproducibility
         for sim in range(simulations):
-            spin_lattice = initialize_spin_lattice(n)  # Initialize spin lattice
-            process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energy_array, mean_magnetisation_array)
+            for algorithm in range(2):  # 0 for Metropolis, 1 for Wolff
+                spin_lattice = initialize_spin_lattice(n)  # Initialize spin lattice
+                process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energy_array, mean_magnetisation_array)
+                pbar.update(1)
 
 
-# setting up data figures and plots
-fig_graph, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, figsize=(16, 10))
-fig_dots, (ax5, ax6, ax7) = plt.subplots(ncols=1, nrows=3, figsize=(16, 10))
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Setting a more scientific style
+plt.style.use('seaborn-darkgrid')  # You can use other styles like 'seaborn-paper' or 'ggplot' for a professional look
+plt.rcParams.update({
+    'font.size': 12,  # General font size for text
+    'axes.labelsize': 14,  # Font size for axes labels
+    'axes.titlesize': 16,  # Font size for titles
+    'xtick.labelsize': 12,  # Font size for x-axis tick labels
+    'ytick.labelsize': 12,  # Font size for y-axis tick labels
+    'legend.fontsize': 12,  # Font size for legend
+    'figure.figsize': (10, 6),  # Set default figure size
+    'lines.linewidth': 1.5  # Default line width for better visibility
+})
+
+# Creating figure and axes
+fig, axs = plt.subplots(2, 2, figsize=(15, 10))
+
+# Looping through the data to plot Energy and Magnetisation
 for seed in range(0, len(seeds)):
     for sim in range(simulations):
-        ax1.plot(time_array, energy_array[seed][0][sim], linewidth=0.5)
-        ax2.plot(time_array, mean_magnetisation_array[seed][0][sim], linewidth=0.5)
-        ax3.plot(time_array, energy_array[seed][1][sim], linewidth=0.5)
-        ax4.plot(time_array, mean_magnetisation_array[seed][1][sim], linewidth=0.5)
-    ax1.set_xlabel("Time")
-    ax2.set_xlabel("Time")
-    ax3.set_xlabel("Time")
-    ax4.set_xlabel("Time")
-    ax1.set_ylabel("Energy")
-    ax2.set_ylabel("Mean magnetisation")
-    ax3.set_ylabel("Energy")
-    ax4.set_ylabel("Mean magnetisation")
-    ax1.set_title("Energy of Metropolis algorithm")
-    ax2.set_title("Mean magnetisation of Metropolis algorithm")
-    ax3.set_title("Energy of Wolff algorithm")
-    ax4.set_title("Mean magnetisation of Wolff algorithm")
+        # Adding a unique color for each seed and linestyle for distinction
+        color = plt.cm.viridis(seed / len(seeds))
+        
+        axs[0, 0].plot(time_array, energy_array[seed][0][sim], color=color, linewidth=0.5, alpha=0.8, label=f'Seed {seed}' if sim == 0 else "")
+        axs[0, 1].plot(time_array, mean_magnetisation_array[seed][0][sim], color=color, linewidth=0.5, alpha=0.8)
+        axs[1, 0].plot(time_array, energy_array[seed][1][sim], color=color, linewidth=0.5, alpha=0.8)
+        axs[1, 1].plot(time_array, mean_magnetisation_array[seed][1][sim], color=color, linewidth=0.5, alpha=0.8)
 
+# Labeling axes and adding titles
+titles = ["Energy of Metropolis algorithm", "Mean absolute magnetisation of Metropolis algorithm",
+          "Energy of Wolff algorithm", "Mean absolute magnetisation of Wolff algorithm"]
+
+y_labels = ["Energy", "Mean Absolute Magnetisation", "Energy", "Mean Absolute Magnetisation"]
+
+for i, ax in enumerate(axs.flat):
+    ax.set_title(titles[i])
+    ax.set_xlabel("Time")
+    ax.set_ylabel(y_labels[i])
+    ax.grid(True)
+    if i == 0:
+        ax.legend(loc='best', fontsize=10)  # Add a legend for only one of the plots
+
+# Adding tight layout to avoid overlap
+plt.tight_layout()
+
+# Plotting functions with error bars and improved aesthetics
 def plot_with_error(ax, T, means, stds=None, label_prefix=''):
-    # Scatter plot
-    ax.scatter(T, means, label=f'{label_prefix} Mean')
+    # Scatter plot with scientific marker and transparency
+    ax.scatter(T, means, label=f'{label_prefix} Mean', alpha=0.7, marker='o', edgecolors='k')
     
-    # Error bars if stds are provided
+    # Error bars with color and cap size
     if stds is not None:
-        ax.errorbar(T, means, yerr=stds, fmt='o', label=f'{label_prefix} Error Bars')
+        ax.errorbar(T, means, yerr=stds, fmt='o', color='k', capsize=3, alpha=0.6, label=f'{label_prefix} Error Bars')
 
-# Means for energy, magnetization, and heat capacity
-mean_energy_m = np.mean(mean_energy_per_sim[:, 0], axis=0)
-mean_energy_w = np.mean(mean_energy_per_sim[:, 1], axis=0)
-mean_magnetisation_m = np.mean(mean_abs_mean_magnetisation[:, 0], axis=0)
-mean_magnetisation_w = np.mean(mean_abs_mean_magnetisation[:, 1], axis=0)
-mean_heat_capacitance_m = np.mean(heat_capacitance[:, 0], axis=0)
-mean_heat_capacitance_w = np.mean(heat_capacitance[:, 1], axis=0)
-
-# Standard deviations
-std_energy_m = np.mean(mean_energy_per_sim_std[:, 0], axis=0)
-std_energy_w = np.mean(mean_energy_per_sim_std[:, 1], axis=0)
-std_magnetisation_m = np.mean(mean_abs_mean_magnetisation_std[:, 0], axis=0)
-std_magnetisation_w = np.mean(mean_abs_mean_magnetisation_std[:, 1], axis=0)
-std_heat_capacitance_m = np.mean(heat_capacitance_std[:, 0], axis=0)
-std_heat_capacitance_w = np.mean(heat_capacitance_std[:, 1], axis=0)
+# Creating new figures for temperature-dependent plots
+fig2, (ax5, ax6, ax7) = plt.subplots(3, 1, figsize=(10, 18))
 
 # Plotting Energy
-plot_with_error(ax5, T, mean_energy_m, std_energy_m, label_prefix='Metropolis')  # First energy mean
-plot_with_error(ax5, T, mean_energy_w, std_energy_w, label_prefix='Wolff')  # Second energy mean
-ax5.set_xlabel("Effective temperature")
+plot_with_error(ax5, T, mean_energy_m, std_energy_m, label_prefix='Metropolis')
+plot_with_error(ax5, T, mean_energy_w, std_energy_w, label_prefix='Wolff')
+ax5.set_xlabel("Reduced Temperature (T)")
 ax5.set_ylabel("Energy")
+ax5.set_title("Energy vs Reduced Temperature")
+ax5.grid(True)
+ax5.legend(loc='best')
 
 # Plotting Mean Absolute Magnetisation
-plot_with_error(ax6, T, mean_magnetisation_m, std_magnetisation_m, label_prefix='Metropolis')  # First magnetisation mean
-plot_with_error(ax6, T, mean_magnetisation_w, std_magnetisation_w, label_prefix='Wolff')  # Second magnetisation mean
-ax6.set_xlabel("Effective temperature")
-ax6.set_ylabel("Mean absolute magnetisation")
+plot_with_error(ax6, T, mean_magnetisation_m, std_magnetisation_m, label_prefix='Metropolis')
+plot_with_error(ax6, T, mean_magnetisation_w, std_magnetisation_w, label_prefix='Wolff')
+ax6.set_xlabel("Reduced Temperature (T)")
+ax6.set_ylabel("Mean Absolute Magnetisation")
+ax6.set_title("Mean Absolute Magnetisation vs Reduced Temperature")
+ax6.grid(True)
+ax6.legend(loc='best')
 
 # Plotting Heat Capacity
-plot_with_error(ax7, T, mean_heat_capacitance_m, std_heat_capacitance_m, label_prefix='Metropolis')  # First heat capacity mean
-plot_with_error(ax7, T, mean_heat_capacitance_w, std_heat_capacitance_w, label_prefix='Wolff')  # Second heat capacity mean
-ax7.set_xlabel("Effective temperature")
-ax7.set_ylabel("Heat capacity")
+plot_with_error(ax7, T, mean_heat_capacitance_m, std_heat_capacitance_m, label_prefix='Metropolis')
+plot_with_error(ax7, T, mean_heat_capacitance_w, std_heat_capacitance_w, label_prefix='Wolff')
+ax7.set_xlabel("Reduced Temperature (T)")
+ax7.set_ylabel("Heat Capacity")
+ax7.set_title("Heat Capacity vs Reduced Temperature")
+ax7.grid(True)
+ax7.legend(loc='best')
 
+# Adjusting layout and showing plots
 plt.tight_layout()
+plt.show()
+
 fig_graph.savefig("ising_graph_comparison.png")
 fig_dots.savefig("ising_data.png")
+
+end_time = datetime.now()
+total_time = end_time-begin_time
+print(total_time)
