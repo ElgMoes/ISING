@@ -296,7 +296,7 @@ plt.tight_layout()
 fig_graph.savefig("ising_graph_comparison.png")
 fig_dots.savefig("ising_data.png")
 
-sound = AudioSegment.from_file("decide.mp3")
+sound = AudioSegment.from_file("assets/sounds/decide.mp3")
 play(sound)
 
 end_time = datetime.now()
