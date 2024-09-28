@@ -1,8 +1,11 @@
 import matplotlib.pyplot as plt
+import matplotlib.colors
 import numpy as np
 from datetime import datetime
 from collections import deque
 from icecream import ic  # debugging tool
+from pydub import AudioSegment
+from pydub.playback import play
 from tqdm import tqdm
 
 begin_time = datetime.now()
@@ -15,9 +18,9 @@ np.random.seed(42)
 num_seeds = 5
 seeds = np.random.randint(1, 10**9, size=num_seeds).tolist()
 n = 100  # Size of the lattice (n x n)
-loops = 100000  # Number of flipping attempts
+loops = 50000  # Number of flipping attempts
 wolff_loops_devider = 2 # wollf algorithm runs loops/wolff_loops_devider times instead of loops
-T = [.5, 1, 2, 3] # reduced temperature
+T = [.5, 1, 2, 3, 4, 6, 8] # reduced temperature
 simulations = len(T)
 last=5000
 
@@ -28,8 +31,8 @@ algorithm_names = ['Metropolis', 'Wolff']
 mean_energy_per_sim = np.zeros(shape = (len(seeds), 2, simulations), dtype=int)
 mean_abs_mean_magnetisation = np.ones(shape = (len(seeds), 2, simulations))
 heat_capacitance = np.zeros(shape = (len(seeds), 2, simulations), dtype=int)
-energy_array = np.zeros(shape = (len(seeds), 2, simulations, loops), dtype=int)
-mean_magnetisation_array = np.zeros(shape=(len(seeds), 2, simulations, loops), dtype=int)
+energy_array = np.full((len(seeds), 2, simulations, loops), -4*n*n, dtype=int)
+mean_magnetisation_array = np.zeros(shape=(len(seeds), 2, simulations, loops))
 time_array = np.linspace(0, loops, loops)
 
 def calculate_system_energy(arr): # both @metropolis and @wolff
@@ -168,10 +171,11 @@ def process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energ
         for loop in tqdm(range(loops), desc=f"Processing Steps", leave=False):
             spin_lattice = metropolis(seed, sim, loop)
     elif algorithm == 1:  # Wolff
-        for loop in tqdm(range(500 if T[sim]<4 else loops), desc=f"Processing Steps", leave=False):
+        for loop in tqdm(range(500 if T[sim]<3 else loops), desc=f"Processing Steps", leave=False):
             spin_lattice = wolff_step(seed, sim, loop, spin_lattice, T)
-        if T[sim]<4:
-            energy_array[500:loops] = -4*n*n
+        if T[sim] < 3:
+            energy_array[seed][1][sim][500:] = energy_array[seed][1][sim][500]
+            mean_magnetisation_array[seed][1][sim][500:] = mean_magnetisation_array[seed][1][sim][500]
 
     # Getting averages of desired variables
     mean_energy_per_sim[seed][algorithm][sim] = np.mean(energy_array[seed][algorithm][sim][-last:])
@@ -190,36 +194,69 @@ with tqdm(total=len(seeds)*2*simulations, desc="Simulation") as pbar:
                 process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energy_array, mean_magnetisation_array)
                 pbar.update(1)
 
+# Setting a more scientific style
+plt.style.use('classic')  # You can use other styles like 'seaborn-paper' or 'ggplot' for a professional look
+plt.rcParams.update({
+    'font.size': 12,  # General font size for text
+    'axes.labelsize': 14,  # Font size for axes labels
+    'axes.titlesize': 16,  # Font size for titles
+    'xtick.labelsize': 12,  # Font size for x-axis tick labels
+    'ytick.labelsize': 12,  # Font size for y-axis tick labels
+    'legend.fontsize': 12,  # Font size for legend
+    'figure.figsize': (10, 6),  # Set default figure size
+    'lines.linewidth': 1.5  # Default line width for better visibility
+})
 
-# setting up data figures and plots
+# explicit function to normalize array
+def normalize(arr, t_min, t_max):
+    norm_arr = []
+    diff = t_max - t_min
+    diff_arr = max(arr) - min(arr)    
+    for i in arr:
+        temp = (((i - min(arr))*diff)/diff_arr) + t_min
+        norm_arr.append(temp)
+    return norm_arr
+
+colours = normalize(T, 0, 1)
+
+# Setting up data figures and plots
 fig_graph, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, figsize=(16, 10))
 fig_dots, (ax5, ax6, ax7) = plt.subplots(ncols=1, nrows=3, figsize=(16, 10))
-for seed in range(0, len(seeds)):
-    for sim in range(simulations):
-        ax1.plot(time_array, energy_array[seed][0][sim], linewidth=0.5)
-        ax2.plot(time_array, mean_magnetisation_array[seed][0][sim], linewidth=0.5)
-        ax3.plot(time_array, energy_array[seed][1][sim], linewidth=0.5)
-        ax4.plot(time_array, mean_magnetisation_array[seed][1][sim], linewidth=0.5)
-    ax1.set_xlabel("Time")
-    ax2.set_xlabel("Time")
-    ax3.set_xlabel("Time")
-    ax4.set_xlabel("Time")
-    ax1.set_ylabel("Energy")
-    ax2.set_ylabel("Mean absolute magnetisation")
-    ax3.set_ylabel("Energy")
-    ax4.set_ylabel("Mean absolute magnetisation")
-    ax1.set_title("Energy of Metropolis algorithm")
-    ax2.set_title("Mean absolute magnetisation of Metropolis algorithm")
-    ax3.set_title("Energy of Wolff algorithm")
-    ax4.set_title("Mean absolute magnetisation of Wolff algorithm")
 
-def plot_with_error(ax, T, means, stds=None, label_prefix=''):
-    # Scatter plot
-    ax.scatter(T, means, label=f'{label_prefix} Mean')
+# Plotting for different simulations
+for seed in range(0, len(seeds)):
+    for sim in range(simulations):# Plotting energy and magnetisation with the assigned colour
+        colour = plt.cm.jet(colours[sim])
+
+        ax1.plot(time_array, energy_array[seed][0][sim], linewidth=0.5, color=colour)
+        ax2.plot(time_array, mean_magnetisation_array[seed][0][sim], linewidth=0.5, color=colour)
+        ax3.plot(time_array, energy_array[seed][1][sim], linewidth=0.5, color=colour)
+        ax4.plot(time_array, mean_magnetisation_array[seed][1][sim], linewidth=0.5, color=colour)
+
+# Set common labels and titles for clarity
+for ax in [ax1, ax2, ax3, ax4]:
+    ax.set_xlabel("Time")
     
+ax1.set_ylabel("Energy")
+ax2.set_ylabel("Mean absolute magnetisation")
+ax3.set_ylabel("Energy")
+ax4.set_ylabel("Mean absolute magnetisation")
+
+ax1.set_title("Energy of Metropolis algorithm")
+ax2.set_title("Mean absolute magnetisation of Metropolis algorithm")
+ax3.set_title("Energy of Wolff algorithm")
+ax4.set_title("Mean absolute magnetisation of Wolff algorithm")
+
+# Optional: Adjust layout
+plt.tight_layout()
+
+def plot_with_error(ax, T, means, stds=None, label_prefix='', color=None):
+    # Scatter plot with color mapping
+    sc = ax.scatter(T, means, c=color, label=f'{label_prefix} Mean')
+
     # Error bars if stds are provided
     if stds is not None:
-        ax.errorbar(T, means, yerr=stds, fmt='o', label=f'{label_prefix} Error Bars')
+        ax.errorbar(T, means, yerr=stds, fmt='o', label=f'{label_prefix} Error Bars', color=color)
 
 # Means for energy, magnetization, and heat capacity
 mean_energy_m = np.mean(mean_energy_per_sim[:, 0], axis=0)
@@ -237,27 +274,30 @@ std_magnetisation_w = np.std(mean_abs_mean_magnetisation[:, 1], axis=0)
 std_heat_capacitance_m = np.std(heat_capacitance[:, 0], axis=0)
 std_heat_capacitance_w = np.std(heat_capacitance[:, 1], axis=0)
 
-# Plotting Energy
-plot_with_error(ax5, T, mean_energy_m, std_energy_m, label_prefix='Metropolis')  # First energy mean
-plot_with_error(ax5, T, mean_energy_w, std_energy_w, label_prefix='Wolff')  # Second energy mean
-ax5.set_xlabel("reduced temperature")
+# Use colors based on the temperature for plotting
+plot_with_error(ax5, T, mean_energy_m, std_energy_m, label_prefix='Metropolis', color="black")  
+plot_with_error(ax5, T, mean_energy_w, std_energy_w, label_prefix='Wolff', color="gray")  
+ax5.set_xlabel("Reduced Temperature")
 ax5.set_ylabel("Energy")
 
 # Plotting Mean Absolute Magnetisation
-plot_with_error(ax6, T, mean_magnetisation_m, std_magnetisation_m, label_prefix='Metropolis')  # First magnetisation mean
-plot_with_error(ax6, T, mean_magnetisation_w, std_magnetisation_w, label_prefix='Wolff')  # Second magnetisation mean
-ax6.set_xlabel("reduced temperature")
-ax6.set_ylabel("Mean absolute magnetisation")
+plot_with_error(ax6, T, mean_magnetisation_m, std_magnetisation_m, label_prefix='Metropolis', color="black")  
+plot_with_error(ax6, T, mean_magnetisation_w, std_magnetisation_w, label_prefix='Wolff', color="gray")  
+ax6.set_xlabel("Reduced Temperature")
+ax6.set_ylabel("Mean Absolute Magnetisation")
 
 # Plotting Heat Capacity
-plot_with_error(ax7, T, mean_heat_capacitance_m, std_heat_capacitance_m, label_prefix='Metropolis')  # First heat capacity mean
-plot_with_error(ax7, T, mean_heat_capacitance_w, std_heat_capacitance_w, label_prefix='Wolff')  # Second heat capacity mean
-ax7.set_xlabel("reduced temperature")
-ax7.set_ylabel("Heat capacity")
+plot_with_error(ax7, T, mean_heat_capacitance_m, std_heat_capacitance_m, label_prefix='Metropolis', color="black")  
+plot_with_error(ax7, T, mean_heat_capacitance_w, std_heat_capacitance_w, label_prefix='Wolff', color="gray")  
+ax7.set_xlabel("Reduced Temperature")
+ax7.set_ylabel("Heat Capacity")
 
 plt.tight_layout()
 fig_graph.savefig("ising_graph_comparison.png")
 fig_dots.savefig("ising_data.png")
+
+sound = AudioSegment.from_file("decide.mp3")
+play(sound)
 
 end_time = datetime.now()
 total_time = end_time-begin_time
