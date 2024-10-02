@@ -15,11 +15,11 @@ np.random.seed(42)
 num_seeds = 5
 seeds = np.random.randint(1, 10**9, size=num_seeds).tolist()
 n = 100  # Size of the lattice (n x n)
-loops = 100000  # Number of flipping attempts
+loops = 1000  # Number of flipping attempts
 wolff_loops_devider = 2 # wollf algorithm runs loops/wolff_loops_devider times instead of loops
-T = [.5, 1, 2, 3] # reduced temperature
+T = [.5, 1, 2, 3, 4, 5, 8, 10] # reduced temperature
 simulations = len(T)
-last=5000
+last=500
 
 # Define algorithm names for display
 algorithm_names = ['Metropolis', 'Wolff']
@@ -168,9 +168,9 @@ def process_simulation(seed, sim, algorithm, spin_lattice, loops, last, T, energ
         for loop in tqdm(range(loops), desc=f"Processing Steps", leave=False):
             spin_lattice = metropolis(seed, sim, loop)
     elif algorithm == 1:  # Wolff
-        for loop in tqdm(range(500 if T[sim]<4 else loops), desc=f"Processing Steps", leave=False):
+        for loop in tqdm(range(500 if T[sim]<0 else loops), desc=f"Processing Steps", leave=False):
             spin_lattice = wolff_step(seed, sim, loop, spin_lattice, T)
-        if T[sim]<4:
+        if T[sim]<0:
             energy_array[500:loops] = -4*n*n
 
     # Getting averages of desired variables
